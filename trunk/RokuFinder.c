@@ -119,7 +119,7 @@ int find_roku (unsigned long ip)
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = htons(9);
 	
-	for (i; i <= 255; i++) {
+	for (; i <= 255; i++) {
 		hwAddr = search (saddr.sin_addr.s_addr);
 		if (!hwAddr) {
 			/* add this ip to the arp table and search again */
