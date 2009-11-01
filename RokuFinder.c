@@ -232,7 +232,13 @@ unsigned char * search (unsigned long ip)
 #ifdef _WIN32
 unsigned long get_ip ()
 {
-	return 0;
+	char szHostName[255];
+	struct hostent *host_entry;
+
+	gethostname(szHostName, 255);
+	host_entry=gethostbyname(szHostName);
+
+	return ((struct in_addr *)*(host_entry->h_addr_list))->s_addr;
 }
 #else
 unsigned long get_ip ()
@@ -247,9 +253,7 @@ unsigned long get_ip ()
 		{
 			if((addr->ifa_flags & IFF_UP) && (addr->ifa_addr->sa_family == AF_INET) && strncmp("lo0", addr->ifa_name, 3))
 			{
-				((struct sockaddr_in *)addr->ifa_addr)->sin_addr.s_addr &= 0x01FFFFFF;
 				ret = ((struct sockaddr_in *)addr->ifa_addr)->sin_addr.s_addr;
-				printf("Starting at IP Address: %s\n", inet_ntoa(((struct sockaddr_in*)addr->ifa_addr)->sin_addr));
 				break;
 			}
 			addr = addr->ifa_next;
@@ -283,7 +287,9 @@ int main (int argc, char *argv[])
 
 	if (strncmp ("-a", argv[1], 2) == 0)
 	{
-		ip = get_ip ();
+		struct in_addr	ipAddr;
+		ip = ipAddr.s_addr = ((get_ip () & 0x00FFFFFF) + 0x01000000);
+		printf("Starting at IP Address: %s\n", inet_ntoa(ipAddr));
 	}
 	else
 	{
