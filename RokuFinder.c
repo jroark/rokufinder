@@ -28,14 +28,17 @@ Usage: RokuFinder [ip to start search from]
 #include <sys/param.h>
 #include <sys/file.h>
 #include <sys/socket.h>
-#include <sys/sockio.h>
 #include <sys/sysctl.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
 
 #include <net/if.h>
+#ifdef	__APPLE__
+#include <sys/sockio.h>
 #include <net/if_dl.h>
 #include <net/if_types.h>
+#include <nlist.h>
+#endif
 #include <net/route.h>
 
 #include <netinet/in.h>
@@ -46,11 +49,10 @@ Usage: RokuFinder [ip to start search from]
 #include <err.h>
 #include <errno.h>
 #include <netdb.h>
-#include <nlist.h>
 #include <paths.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <strings.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <sys/types.h>
@@ -81,8 +83,7 @@ void usage ()
 		"         RokuFinder 192.168.1.1 (Will search from 192.168.1.1 to 192.168.1.255)\n");
 }
 
-int
-is_roku(unsigned char *hwAddr, unsigned long ipAddr)
+int is_roku(unsigned char *hwAddr, unsigned long ipAddr)
 {
 	int rtn = 0;
 		
@@ -188,7 +189,7 @@ unsigned char * search (unsigned long ip)
 
 	return NULL;
 }
-#else	// OSX
+#elif defined(__APPLE__)	// OSX
 unsigned char * search (unsigned long ip)
 {
 	int mib[6];
@@ -220,8 +221,7 @@ unsigned char * search (unsigned long ip)
 					sin2 = (struct sockaddr_inarp *)(rtm + 1);
 					sdl = (struct sockaddr_dl*)((char*)sin2 + ROUNDUP(sin2->sin_len));
 					if (ip) {
-						if (ip == sin2->sin_addr.s_addr)
-						{
+						if (ip == sin2->sin_addr.s_addr) {
 							memcpy (hwAddr, (unsigned char *)LLADDR(sdl), sizeof (hwAddr));
 							free(buf);
 							return hwAddr;
@@ -235,7 +235,43 @@ unsigned char * search (unsigned long ip)
 	
 	return NULL;
 }
+#else
+unsigned char * search (unsigned long ip)
+{
+	// use SIOCGARP to check for the hwaddr
+	int			s	= -1;
+	struct arpreq		areq	= {0};
+	struct sockaddr_in	*sin	= NULL;
+	struct in_addr		ipaddr	= {0};
+	static unsigned char	hwAddr[8]	= {0};
 
+	/* create a socket */
+	if ((s = socket (AF_INET, SOCK_DGRAM, 0)) != -1)
+	{
+		memset (&areq, 0, sizeof(areq));
+		sin	= (struct sockaddr_in*)&areq.arp_pa;
+		sin->sin_family	= AF_INET;
+	}
+
+	ipaddr.s_addr = ip;
+	memcpy (&sin->sin_addr, &ipaddr, sizeof(sin->sin_addr));
+	sin		= (struct sockaddr_in *)&areq.arp_ha;
+	sin->sin_family	= ARPHRD_ETHER;
+
+	strncpy (areq.arp_dev, "eth0", 4);
+
+	if (ioctl (s, SIOCGARP, (caddr_t)&areq) != -1)
+	{
+		memcpy (hwAddr, &areq.arp_ha, sizeof (areq.arp_ha));
+		shutdown (s, 2);
+		close (s);
+		return hwAddr;
+	}
+
+	shutdown (s, 2);
+	close (s);
+	return NULL;
+}
 #endif
 
 #ifdef _WIN32
